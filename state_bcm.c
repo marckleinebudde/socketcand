@@ -195,6 +195,25 @@ void state_bcm() {
 				sendto(sc, &msg, sizeof(msg), 0,
 				       (struct sockaddr*)&caddr, sizeof(caddr));
 			}
+			/* send RTR frame only */
+		} else if(!strncmp("< sendrtr ", buf, 10)) {
+			items = sscanf(buf, "< %*s %x >", &msg.msg_head.can_id);
+			if(items < 1) {
+				PRINT_ERROR("Syntax error in send command\n")
+				return;
+			}
+
+			/* force DLC 0 since it is undocumented feature */
+			msg.frame.can_dlc = 0;
+			msg.msg_head.can_id |= CAN_RTR_FLAG;
+
+			if(element_length(buf, 2) == 8)
+				msg.msg_head.can_id |= CAN_EFF_FLAG;
+
+			if(!ioctl(sc, SIOCGIFINDEX, &ifr)) {
+				caddr.can_ifindex = ifr.ifr_ifindex;
+				sendto(sc, &msg, sizeof(msg), 0, (struct sockaddr*) &caddr, sizeof(caddr));
+			}
 			/* Add a send job */
 		} else if(!strncmp("< add ", buf, 6)) {
 			items = sscanf(buf, "< %*s %lu %lu %x %hhu "

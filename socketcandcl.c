@@ -342,6 +342,29 @@ inline void state_connected()
 						}
 					}
 				}
+				if (!strncmp("< rtr ", buf, 6)) {
+					char *s = buf + 6;
+
+					/* send RTR frame only */
+					sscanf(buf, "< %*s %x %*d.%*d >", &frame.can_id);
+
+					/* force DLC 0 since it is undocumented feature */
+					frame.can_dlc = 0;
+					frame.can_id |= CAN_RTR_FLAG;
+
+					for (; ++s;) {
+						if (*s == ' ') {
+							break;
+						}
+					}
+					if ((s - buf - 7) > 4)
+						frame.can_id |= CAN_EFF_FLAG;
+
+					ret = write(raw_socket, &frame, sizeof(struct can_frame));
+					if(ret < sizeof(struct can_frame)) {
+						perror("Writing CAN frame to can socket\n");
+					}
+				}
 			} else {
 				ret = read(server_socket, &buf, 0);
 				if(ret == -1) {
@@ -372,8 +395,15 @@ inline void state_connected()
 				} else {
 					if(frame.can_id & CAN_ERR_FLAG) {
 						/* TODO implement */
+						continue;
 					} else if(frame.can_id & CAN_RTR_FLAG) {
-						/* TODO implement */
+						if(frame.can_id & CAN_EFF_FLAG) {
+							ret = sprintf(buf, "< sendrtr %08X >",
+								      frame.can_id & CAN_EFF_MASK);
+						} else {
+							ret = sprintf(buf, "< sendrtr %03X >",
+								      frame.can_id & CAN_SFF_MASK);
+						}
 					} else {
 						int i;
 						if(frame.can_id & CAN_EFF_FLAG) {
@@ -387,12 +417,12 @@ inline void state_connected()
 							ret += sprintf(buf+ret, "%02x ", frame.data[i]);
 						}
 						sprintf(buf+ret, " >");
+					}
 
-						const size_t len = strlen(buf);
-						ret = send(server_socket, buf, len, 0);
-						if(ret < sizeof(len)) {
-							perror("Error sending TCP frame\n");
-						}
+					const size_t len = strlen(buf);
+					ret = send(server_socket, buf, len, 0);
+					if(ret < sizeof(len)) {
+						perror("Error sending TCP frame\n");
 					}
 				}
 			}
